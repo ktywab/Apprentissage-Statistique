@@ -1,0 +1,665 @@
+---
+title: "TP SVM"
+author: "ABOTSI Kossi Tonyi Wobubey"
+date: "28/09/2024"
+format:
+  html:
+    css: styles.css
+    code-fold: true
+    toc: true                # Activation de la table des matières (TOC)
+    toc-title: "Table des matières"     # Titre de la table des matières
+    toc-depth: 3              # Profondeur de la TOC (niveaux de titres inclus, H1 et H2 ici)
+    number-sections: true     # Numérotation des sections
+    fig-align: center         # Alignement des figures au centre
+    fig-cap-location: bottom  # Légende des figures en bas
+    self-contained: true      # Emballe tout dans un seul fichier HTML
+    code-tools: true          # Affiche des outils interactifs pour le code (comme le bouton "Copier")
+jupyter: python3
+---
+
+
+
+### Introduction
+
+
+Dans ce TP, nous allons explorer l'utilisation des **SVM** (Support Vector Machines) pour la classification. En utilisant des noyaux linéaires et polynomiaux, nous évaluerons la performance du modèle et analyserons les résultats obtenus à travers des matrices de confusion et des scores de précision. L'objectif est de mieux comprendre comment le bruit et les paramètres influencent les performances du modèle.
+
+---
+
+
+
+
+
+### Importation des bibliothèque nécéssaire
+
+
+```{python}
+# Importation des bibliothèques nécessaires
+import numpy as np  # Importation de NumPy pour les opérations sur les tableaux/matrices
+import matplotlib.pyplot as plt  # Importation de Matplotlib pour la visualisation des données
+from sklearn.svm import SVC  # Importation de la classe Support Vector Classifier (SVC) de Scikit-learn
+
+# Importation de modules personnalisés (contenu dans svm_source.py, non détaillé ici)
+from svm_source import *
+
+# Importation de jeux de données et outils de prétraitement de Scikit-learn
+from sklearn import datasets  # Jeux de données intégrés à Scikit-learn
+from sklearn.utils import shuffle  # Fonction pour mélanger les données aléatoirement
+from sklearn.preprocessing import StandardScaler  # Normalisation des caractéristiques (centrer et réduire)
+from sklearn.model_selection import train_test_split, GridSearchCV  # Découpage des données et optimisation des hyperparamètres
+from sklearn.datasets import fetch_lfw_people  # Chargement du dataset de visages LFW (Labelled Faces in the Wild)
+from sklearn.decomposition import PCA  # Analyse en composantes principales (réduction de dimension)
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay  # Outils pour calculer et afficher une matrice de confusion
+from time import time  # Mesure du temps pour évaluer les performances du code
+
+# Instanciation de l'objet StandardScaler pour la normalisation
+scaler = StandardScaler()
+
+# Désactivation des avertissements
+import warnings
+warnings.filterwarnings("ignore")  # Ignore les avertissements pour garder la sortie propre
+
+# Définition d'une graine pour garantir la reproductibilité des résultats
+import random
+random.seed(42)
+
+# Application d'un style graphique pour Matplotlib (style ggplot)
+plt.style.use('ggplot')
+
+```
+
+
+
+### Question 1 et Question 2
+
+
+
+```{python}
+    #Chargement du jeu de données Iris
+    iris = datasets.load_iris()
+    X = iris.data
+    y = iris.target
+    X = X[y != 0, :2]
+    y = y[y != 0]
+
+    # Calcul des proportions des deux modalités restantes dans y
+    unique, counts = np.unique(y, return_counts=True)
+    proportions = counts / counts.sum()
+
+    # Création du graphique pour visualiser les proportions des deux modalités
+    labels = [f'Classe {int(label)}' for label in unique]
+
+    plt.figure(figsize=(6, 6))
+    plt.pie(proportions, labels=labels, autopct='%1.1f%%', colors=['lightcoral', 'skyblue'], startangle=90)
+    plt.title(' Figure 1 : Proportions des deux modalités de la variable y')
+    plt.axis('equal')  # Pour s'assurer que le graphe est bien circulaire
+    plt.show()
+```
+
+La figure 1 montre que les proportions des deux modalités de la variable cible (y) sont identiques.
+
+
+
+#### Construction du classifieur SVM avec un noyau linéaire et polynomiale {unnumbered=true}
+
+
+Je divise mon jeu de données en ensemble d'entraînement et ensemble de test (50 % - 50 %), tout en conservant les mêmes proportions des deux classes dans chaque ensemble.
+```{python, , code-fold: false}
+    # Séparation des données en ensemble d'entraînement et de test (50% - 50%), avec stratification pour avoir la meme répartition dans la base train et dans la base test
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, stratify=y, random_state=42)
+
+    #Faire le scaling
+    # Initialisation du scaler
+    scaler = StandardScaler()
+
+    # Fit sur l'ensemble d'entraînement (apprentissage des paramètres de scaling : moyenne et écart-type)
+    X_train_scaled = scaler.fit_transform(X_train)
+
+    # Transformation de l'ensemble de test (utilise la moyenne et l'écart-type appris sur l'ensemble d'entraînement)
+    X_test_scaled = scaler.transform(X_test)
+
+    #-----------------------------------------------------------------------
+    # Construction du classifieur SVM avec un noyau linéaire
+    parametre_lineaire = {'kernel': ['linear'], 'C': list(np.logspace(-3, 3, 200))}
+
+    # Choix du meilleur modèle
+    svm_l = SVC()
+    grid_search_linear = GridSearchCV(svm_l, param_grid=parametre_lineaire, cv=5)
+    grid_search_linear.fit(X_train_scaled, y_train)
+    best_model_SVM_lineaire = grid_search_linear.best_estimator_
+
+
+    #-------------------------------------------------------------------
+    # Construction du classifieur SVM avec un noyau polynomiale
+
+    Cs = list(np.logspace(-3, 3, 5))
+    gammas = 10. ** np.arange(1, 2)
+    degrees = np.r_[1, 2, 3]
+    parametre_polynome = {'kernel': ['poly'], 'C': Cs, 'gamma': gammas, 'degree': degrees}
+
+    # Choix du meilleur modèle
+    svm_p = SVC()
+    grid_search_poly = GridSearchCV(svm_p, param_grid=parametre_polynome, cv=5)
+    grid_search_poly.fit(X_train_scaled, y_train)
+    best_model_SVM_polynome = grid_search_poly.best_estimator_
+    #--------------------------------------------------------------------
+    #Affichage de la frontière
+    def f_linear(xx):
+        """Classifier: needed to avoid warning due to shape issues"""
+        return best_model_SVM_lineaire.predict(xx.reshape(1, -1))
+
+    def f_poly(xx):
+        """Classifier: needed to avoid warning due to shape issues"""
+        return best_model_SVM_polynome.predict(xx.reshape(1, -1))
+
+    # Graphique 1 : Dataset original
+    plt.ion()
+    plt.figure(figsize=(10, 3))
+    plt.subplot(131)
+    plot_2d(X_train_scaled, y_train)
+    plt.title("iris dataset")
+    plt.legend(['Classe 1', 'Classe 2'], loc='upper right')
+
+    # Graphique 2 : Noyau linéaire
+    plt.subplot(132)
+    frontiere(f_linear, X_train_scaled, y_train)
+    plt.title("SVM avec noyau linéaire")
+
+    # Graphique 3 : Noyau polynomiale
+    plt.subplot(133)
+    frontiere(f_poly, X_train_scaled, y_train)
+    plt.title("SVM avec noyau polynomial")
+
+    plt.tight_layout()
+    plt.suptitle("Figure 2 : Classifieur à noyau linéaire et polynomial",y=-0.05)
+    plt.show()
+```
+
+
+
+#### Evaluation de la performance des deux modèles {unnumbered=true}
+
+
+
+```{python}
+    # Fonction pour tracer la matrice de confusion avec les scores
+    def plot_confusion_matrix_with_scores(model, X_train, X_test, y_train,  y_test, title, subplot_position):
+        # Prédiction sur l'ensemble de test
+        y_pred = model.predict(X_test)
+
+        # Calcul de la matrice de confusion
+        cm = confusion_matrix(y_test, y_pred)
+
+        # Création d'une sous-figure pour la matrice de confusion
+        plt.subplot(1, 2, subplot_position)
+        
+        # Affichage de la matrice de confusion
+        cmd = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=np.unique(y_train))
+        cmd.plot(cmap=plt.cm.Blues, ax=plt.gca(), colorbar=False)  # Ne pas créer de nouvelle figure
+        plt.title(title)
+        
+        # Scores d'accuracy
+        train_score = model.score(X_train, y_train)
+        test_score = model.score(X_test, y_test)
+        
+        # Afficher les scores en bas de chaque matrice
+        plt.xlabel('Accuracy:\nEntrainement: {:.2f}, Test: {:.2f}'.format(train_score, test_score))
+
+    # Définition de la figure pour afficher les matrices côte à côte
+    plt.figure(figsize=(10, 4))
+
+    # Matrice de confusion pour le noyau linéaire
+    plot_confusion_matrix_with_scores(
+        best_model_SVM_lineaire, 
+        X_train_scaled, X_test_scaled, y_train, y_test, 
+        'Noyau linéaire', 
+        subplot_position=1  
+    )
+
+    # Matrice de confusion pour le noyau polynomial
+    plot_confusion_matrix_with_scores(
+        best_model_SVM_polynome, 
+        X_train_scaled, X_test_scaled, y_train, y_test, 
+        'Noyau polynomial', 
+        subplot_position=2  
+    )
+
+    # Titre global de la figure
+    plt.suptitle("Figure 3 : Matrice de confusion", y=1.05)
+
+    # Ajuster l'affichage pour éviter les chevauchements
+    plt.tight_layout()
+
+    # Affichage
+    plt.show()
+```
+
+La précision est donnée par la formule suivante :
+$$
+\text{accuracy} = \frac{TP + TN}{TP + TN + FP + FN}
+$$
+
+où :
+
+- \(TP\) : Vrais Positifs
+- \(TN\) : Vrais Négatifs
+- \(FP\) : Faux Positifs
+- \(FN\) : Faux Négatifs
+
+---
+
+<p style="text-align: center; font-size: 1.5em; font-weight: bold;">Tab 1 : Matrice de confusion pour le noyau linéaire</p>
+
+ 
+
+
+| Classe Réelle / Prédite | Classe 1 (Prédite) | Classe 2 (Prédite) |
+|-------------------------|--------------------|--------------------|
+| Classe 1 (Réelle)        | 18 (vrais positifs) | 7 (faux négatifs)  |
+| Classe 2 (Réelle)        | 5 (faux positifs)   | 20 (vrais négatifs) |
+
+---
+
+
+<p style="text-align: center; font-size: 1.5em; font-weight: bold;">Tab 2 : Métriques pour le noyau linéaire</p>
+
+
+
+| Métriques                       | Valeur |
+|----------------------------------|--------|
+| Accuracy (Entraînement)          | 0.68   |
+| Accuracy (Test)                  | 0.76   |
+| Taux de vrais positifs (Classe 1)| 72 %   |
+| Taux de vrais positifs (Classe 2)| 80 %   |
+
+La performance générale est assez bonne, avec une précision de 76 % sur l'ensemble de test et de 68 % sur l'ensemble d'entraînement. Il y a un léger déséquilibre, avec plus d'erreurs pour la classe 1 (7 erreurs contre 5 pour la classe 2).
+
+---
+
+
+<p style="text-align: center; font-size: 1.5em; font-weight: bold;">Tab 3 : Matrice de confusion pour le noyau polynomial</p>
+
+
+
+
+| Classe Réelle / Prédite | Classe 1 (Prédite) | Classe 2 (Prédite) |
+|-------------------------|--------------------|--------------------|
+| Classe 1 (Réelle)        | 20 (vrais positifs) | 5 (faux négatifs)  |
+| Classe 2 (Réelle)        | 9 (faux positifs)  | 16 (vrais négatifs) |
+
+---
+
+
+<p style="text-align: center; font-size: 1.5em; font-weight: bold;">Tab 4 : Métriques pour le noyau polynomial</p>
+ 
+
+| Métriques                       | Valeur |
+|----------------------------------|--------|
+| Accuracy (Entraînement)          | 0.72   |
+| Accuracy (Test)                  | 0.72   |
+| Taux de vrais positifs (Classe 1)| 80 %  |
+| Taux de vrais positifs (Classe 2)| 64 %    |
+
+Bien que le modèle à noyau polynomial affiche une précision de 72 % sur l'ensemble de test, il n'est pas aussi performant que le modèle à noyau linéaire, qui généralise mieux.
+---
+
+
+
+### Question 4 : Montrez l’influence du paramètre de régularisation. On pourra par exemple afficher l’erreur de prédiction en fonction de C sur une échelle logarithmique entre 1e5 et 1e-5.
+
+
+---
+
+
+#### Dataset image
+
+
+```{python}
+    # Download the data and unzip; then load it as numpy arrays
+    lfw_people = fetch_lfw_people(min_faces_per_person=70, resize=0.4,
+                                color=True, funneled=False, slice_=None,
+                                download_if_missing=True)
+
+    # introspect the images arrays to find the shapes (for plotting)
+    images = lfw_people.images
+    """
+    n_samples : nombre de ligne
+    h :  hauteur de l'image
+    w : largeur de l'image
+    n_colors : le nombre de canaux de couleur
+    """
+    n_samples, h, w, n_colors = images.shape
+
+    # Chargement des noms associés aux visages
+    target_names = lfw_people.target_names.tolist()
+
+    # Pick a pair to classify such as
+    names = ['Tony Blair', 'Colin Powell']
+    # names = ['Donald Rumsfeld', 'Colin Powell']
+
+    #Booléens indiquant les indices où les images correspondent respectivement à names[0] et names[1]
+    idx0 = (lfw_people.target == target_names.index(names[0]))
+    idx1 = (lfw_people.target == target_names.index(names[1]))
+
+    #Empilement suivant l'axe horizontale des images de 'Tony Blair' et de 'Colin Powell'
+    images = np.r_[images[idx0], images[idx1]]
+
+    #Nombre d'image total de 'Tony Blair' et de 'Colin Powell'
+    n_samples = images.shape[0]
+
+    #Labelisation zero pour 'Tony Blair' et 1 pour 'Colin Powell'
+    y = np.r_[np.zeros(np.sum(idx0)), np.ones(np.sum(idx1))].astype(int)
+
+    # plot a sample set of the data
+    plot_gallery(images, np.arange(12))
+    plt.show()
+
+```
+
+
+```{python}
+    # Extract features
+
+    # Convertion des couleurs en niveau de gris et applatissement des images(une image devient un vecteur ligne)
+    X = (np.mean(images, axis=3)).reshape(n_samples, -1)
+
+    # # or compute features using colors (3 times more features)
+    # X = images.copy().reshape(n_samples, -1)
+
+    # On centre et on réduit chaque vecteur ligne correspondant à une image applatie
+    X -= np.mean(X, axis=0)
+    X /= np.std(X, axis=0)
+
+    # Permutation aléatoire des indices
+    random.seed(42)
+    indices = np.random.permutation(X.shape[0])
+
+    #Division des indices en ensemble d'entrainement et de test (50% pour le train et 50% pour le test)
+    train_idx, test_idx = indices[:X.shape[0] // 2], indices[X.shape[0] // 2:]
+    X_train, X_test = X[train_idx, :], X[test_idx, :]
+    y_train, y_test = y[train_idx], y[test_idx]
+    images_train, images_test = images[train_idx, :, :, :], images[test_idx, :, :, :]
+
+    #Entrainement du modèle avec le noyau linéaire
+    print("--- Linear kernel ---")
+    print("Fitting the classifier to the training set")
+    t0 = time()
+
+    # fit a classifier (linear) and test all the Cs
+    Cs = 10. ** np.arange(-5, 6)
+    scores = []
+    erreurs = []
+    for C in Cs:
+        # Créer un classificateur SVM avec noyau linéaire
+        classifieur_SVM_lineaire = SVC(kernel='linear', C=C)
+        classifieur_SVM_lineaire.fit(X_train, y_train)  # Entraînement du modèle
+        score = classifieur_SVM_lineaire.score(X_test, y_test)  # Évaluation sur l'ensemble de test
+        scores.append(score)
+
+        # Calculer le taux d'erreur
+        erreur = 1 - score  # Taux d'erreur
+        erreurs.append(erreur)  # Enregistrer l'erreur
+
+    #Choix du C optimal selon le score obtenu
+    ind = np.argmax(scores)
+    
+
+    plt.figure()
+    plt.plot(Cs, erreurs)
+    plt.xlabel("Parametres de regularisation C")
+    plt.ylabel("Erreurs de prédiction")
+    plt.xscale("log")
+    plt.tight_layout()
+    plt.suptitle("Figure 4 : Erreur de prédiction en fonction de C",x=0.5)
+    plt.show()
+
+    print("Best C: {}".format(Cs[ind]))
+    print("Best score: {}".format(np.max(scores)))
+
+    #print("Predicting the people names on the testing set")
+    t0 = time()
+```
+
+Sur la figure 1, on observe l'évolution de l'erreur de prédiction en fonction du coefficient de régularisation. On constate que, plus le coefficient de régularisation C augmente, plus l'erreur de prédiction diminue, jusqu'à atteindre une valeur très faible.
+
+---
+
+
+
+#### Prediction avec le modèle optimal
+
+
+```{python}
+    # Prédiction avec le meilleur classifieur
+    best_classifieur = SVC(kernel='linear', C=Cs[ind])
+    best_classifieur.fit(X_train, y_train)
+
+    print("Temps d'exécution : %0.3fs" % (time() - t0))
+    # The chance level is the accuracy that will be reached when constantly predicting the majority class.
+    print("Chance level : %s" % max(np.mean(y), 1. - np.mean(y)))
+    print("Accuracy : %s" % best_classifieur.score(X_test, y_test))
+
+    # Faire des prédictions sur l'ensemble de test
+    y_pred = best_classifieur.predict(X_test)
+    prediction_titles = [title(y_pred[i], y_test[i], names)
+                     for i in range(y_pred.shape[0])]
+                     
+    plot_gallery(images_test, prediction_titles)
+    plt.show()
+```
+
+---
+
+
+
+#### Visualisation des coefficients du modèle
+
+
+```{python}
+    ####################################################################
+    # Visualisation des coefficients
+    plt.figure()
+    plt.suptitle("Figure 5 : Visualisation des coefficients du modèle")
+    plt.imshow(np.reshape(best_classifieur.coef_, (h, w)))
+    plt.show()
+
+```
+
+---
+
+
+<p style="text-align: font-size: 1.1em; font-weight: bold;">Interprétation :</p>
+
+L'image de la figure 5 ressemble à une représentation floue d'un visage ou d'une forme identifiable. Cela indique que les coefficients des pixels révèlent quelles parties du visage (ou de l'image) sont les plus pertinentes pour la tâche de classification. Les zones lumineuses (jaune, vert clair) correspondent probablement aux pixels avec des coefficients élevés (positifs ou négatifs), indiquant qu'ils jouent un rôle important dans la classification. En revanche, les zones sombres (bleu, violet foncé) représentent des coefficients plus faibles, ce qui signifie que ces parties de l'image ont moins d'importance dans la décision du modèle.
+
+---
+
+
+
+### Question 4 : En ajoutant des variables de nuisances, augmentant ainsi le nombre de variables à nombre de points d’apprentissage fixé, montrez que la performance chute.
+
+
+
+```{python}
+    # Génération des features de bruit avec un sigma écart type des bruits
+    sigma = 1
+    nombre_noise = np.arange(0, 15000, 1000)
+
+    # Fonction d'entraînement du modèle
+    def run_svm_cv(_X, _y):
+        _indices = np.random.permutation(_X.shape[0])
+        _train_idx, _test_idx = _indices[:_X.shape[0] // 2], _indices[_X.shape[0] // 2:]
+        _X_train, _X_test = _X[_train_idx, :], _X[_test_idx, :]
+        _y_train, _y_test = _y[_train_idx], _y[_test_idx]
+
+        _parameters = {'kernel': ['linear'], 'C': list(np.logspace(-3, 3, 5))}
+        _svr = SVC()
+        _clf_linear = GridSearchCV(_svr, _parameters)
+        _clf_linear.fit(_X_train, _y_train)
+
+        return _clf_linear.score(_X_test, _y_test)
+
+    # Listes pour stocker les scores
+    scores_sans_bruit = []
+    scores_avec_bruit = []
+
+    # Générer toutes les variables de bruit à l'avance
+    n_samples = X.shape[0]
+    random.seed(42)
+    noise_features = np.random.randn(n_samples, nombre_noise[-1])
+
+    # Calcul des scores en fonction du nombre de variables de bruit
+    for n_noise in nombre_noise:
+        # Extraire les premières n_noise features de bruit
+        noise = noise_features[:, :n_noise]
+        
+        # Normaliser le bruit (centrage et réduction)
+        tmp_mean = noise.mean(axis=0)
+        tmp_std = noise.std(axis=0)
+        
+        for k in range(n_noise):
+            noise[:, k] -= tmp_mean[k]
+            noise[:, k] /= tmp_std[k]
+
+        # Ajout du bruit aux features
+        X_noise = np.concatenate((X, noise), axis=1)
+
+        # Score sans bruit
+        score_sans_bruit = run_svm_cv(X, y)
+        scores_sans_bruit.append(score_sans_bruit)
+
+        # Score avec bruit
+        score_avec_bruit = run_svm_cv(X_noise, y)
+        scores_avec_bruit.append(score_avec_bruit)
+
+    # Score moyen
+    print("Score moyen avec variable de nuisance (avec bruit) : {} ".format(np.mean(scores_avec_bruit)))
+    print("Score moyen sans variable de nuisance (sans bruit) : {} ".format(np.mean(scores_sans_bruit)))
+
+    # Visualisation de l'évolution des scores en fonction du nombre de variables de bruit
+    plt.figure()
+    plt.xlabel('Nombre de variables bruitées')
+    plt.ylabel('Score')
+    plt.suptitle('Figure 6 : Evolution de la performance en fonction du nombre de bruit')
+    plt.plot(nombre_noise, scores_avec_bruit, label="Avec bruit")
+    plt.plot(nombre_noise, scores_sans_bruit, label="Sans bruit", linestyle='--')
+    plt.legend()
+    plt.show()
+```
+
+---
+
+La figure 6 montre l'évolution de la performance du modèle (accuracy) en fonction du nombre de variables bruitées introduites dans les données. On observe que, de manière générale, la performance du modèle diminue losqu'on introduit du bruit dans les données.
+
+---
+
+
+
+### Question 5 : Améliorez la prédiction à l’aide d’une réduction de dimension
+
+
+```{python}
+    # Paramètres
+    sigma = 1
+    nombre_noise = 3000
+    n_samples = X.shape[0]
+    n_features = X.shape[1]
+
+    # Génération des features de bruit
+    random.seed(42)
+    noise = sigma * np.random.randn(n_samples, nombre_noise)
+    X_noise = np.concatenate((X, noise), axis=1)
+
+    # Sélection du nombre de composantes pour PCA
+    max_components = min(X_noise.shape[0], X_noise.shape[1])
+    step = max(1, max_components // 5)
+    n_components = np.arange(1,max_components - max_components // 2, step, dtype=int)
+
+    # Listes pour stocker les scores
+    scores_composante = []
+    scores_avec_bruit = []
+
+    # Calcul des scores en fonction du nombre de composantes PCA
+    for composante in n_components:
+        # Réduction de dimension avec PCA
+        pca = PCA(n_components=composante,svd_solver='randomized').fit(X_noise)
+        X_reduced = pca.transform(X_noise)
+
+        # Score avec bruit
+        score_avec_bruit = run_svm_cv(X_noise, y)
+        scores_avec_bruit.append(score_avec_bruit)
+
+        # Score après réduction de dimension (PCA)
+        score_composante = run_svm_cv(X_reduced, y)
+        scores_composante.append(score_composante)
+
+    # Visualisation de l'évolution des scores en fonction des composantes PCA
+    plt.figure()
+    plt.xlabel('Nombre de composante PCA')
+    plt.ylabel('Score')
+    plt.suptitle('Figure 7 : Evolution de performance entre le PCA et variable bruitée')
+    plt.plot(n_components, scores_avec_bruit, label='Avec bruit')
+    plt.plot(n_components, scores_composante, label='Avec PCA')
+    plt.legend()
+    plt.show()
+```
+
+---
+
+La figure 7 montre les performances du modèle de classification sur des données bruitées (avec l'ajout de 3000 variables bruitées) ainsi que sur les composantes principales (PCA) de ces données, en fonction du nombre de composantes utilisées. On remarque qu'à partir d'un nombre optimal de composantes, le modèle obtient de meilleurs résultats (avec une erreur plus faible) que lorsqu'il est appliqué directement sur les données bruitées.
+
+---
+
+
+
+### Question 3 : SVM GUI (optionnel)
+
+
+Nous disposons ici d'un jeu de données composé de 35 observations. Nous souhaitons donc visualiser graphiquement l'influence du coefficient de régularisation sur la frontière de décision du modèle SVM.
+
+
+<p style="text-align: center; font-size: 1.5em; font-weight: bold;">Figure 8: SVM avec noyau linéaire, C=1</p>
+
+
+![SVM avec noyau linéaire, C=1, accuracy = 100%](/image/GUI_1.png){fig-align="center" width="70%"}
+
+*Pour C=1.0, le modèle atteint une précision de 100 %, ce qui signifie qu'il parvient à bien séparer les classes. La frontière de décision apparaît assez rigide.*
+
+
+
+<p style="text-align: center; font-size: 1.5em; font-weight: bold;">Figure 9: SVM avec noyau linéaire, C=0.01</p>
+
+
+![SVM avec noyau linéaire, C=0.01, accuracy = 100%](/image/GUI_0.01_100%.png){fig-align="center" width="70%"}
+
+*Avec C=0.01 : la précision reste à 100 %. Cependant, la frontière de décision s'élargit légèrement.*
+
+
+
+<p style="text-align: center; font-size: 1.5em; font-weight: bold;">Figure 10: SVM avec noyau linéaire, C=0.001</p>
+
+
+![SVM avec noyau linéaire, C=0.001, accuracy = 93.93%](/image/GUI_0.001_93.93%.png){fig-align="center" width="70%"}
+
+*Pour C=0.001, la précision diminue légèrement à 93,93 %. La frontière de décision devient plus souple, offrant ainsi une marge d'erreur plus importante.*
+
+
+
+<p style="text-align: center; font-size: 1.5em; font-weight: bold;">Figure 11: SVM avec noyau linéaire, C=0.00001</p>
+
+
+![SVM avec noyau linéaire, C=0.00001, accuracy = 75%](/image/GUI_0.00001_75%.png){fig-align="center" width="70%"}
+
+*Avec C=0.00001 : la précision chute à 75 %. La frontière de décision devient beaucoup plus souple, rendant le modèle nettement moins précis, particulièrement pour les données de la classe majoritaire.*
+
+En conclusion, on observe que plus le coefficient de régularisation C diminue, plus la frontière de décision s'élargit, ce qui offre une marge d'erreur plus importante et permet ainsi de mieux généraliser.
+
+### Conclusion
+
+Dans ce travail, nous avons exploré l'utilisation des SVM avec différents noyaux (linéaire et polynomial) pour la classification. À travers l'analyse des matrices de confusion et des scores de précision, nous avons observé l'impact du coefficient de régularisation C sur la frontière de décision, la précision du modèle, et sa capacité à généraliser.
+
+Les expériences montrent qu'un coefficient de régularisation plus faible conduit à une frontière de décision plus souple, ce qui améliore la capacité de généralisation du modèle, mais peut également réduire la précision sur des données spécifiques. Inversement, un C plus élevé rend la frontière de décision plus rigide, améliorant souvent la précision sur l'ensemble de données d'entraînement, mais avec un risque de surapprentissage (overfitting).
+
+De plus, l'introduction de bruit dans les données a permis de tester la robustesse du modèle. L'application de la méthode PCA a montré que la réduction dimensionnelle permet d'améliorer la performance du modèle sur les données bruitées, prouvant l'efficacité de la PCA dans de tels contextes.
+
+En conclusion, les SVM se révèlent être des modèles puissants pour la classification, mais leur performance dépend fortement du choix du noyau, des paramètres de régularisation, et de la gestion des données bruitées. Il est essentiel de bien ajuster ces paramètres en fonction du contexte spécifique pour maximiser la capacité de généralisation du modèle.
